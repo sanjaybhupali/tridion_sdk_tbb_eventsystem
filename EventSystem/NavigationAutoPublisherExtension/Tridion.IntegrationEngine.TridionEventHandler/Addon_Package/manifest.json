@@ -1,0 +1,18 @@
+{
+  "manifestVersion": "1.0",
+  "id": "IntegrationEngineEventHandler",
+  "version": "1.0.0",
+  "name": "Tridion Integration Engine Event Handler",
+  "description": "Event handler to trigger integration workflows in Tridion Integration Engine",
+  "author": "RWS",
+  "requireConfiguration": "Yes",
+  "extensions": [
+    {
+      "name": "IntegrationEngineEventHandler",
+      "type": "CMEventHandler",
+      "properties": {
+        "assemblyFileSource": "Tridion.IntegrationEngine.TridionEventHandler.dll"
+      }
+    }
+  ]
+}

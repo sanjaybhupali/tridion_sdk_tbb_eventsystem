@@ -1,0 +1,327 @@
+﻿using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Xml;
+using System.Xml.Linq;
+using System.Xml.Serialization;
+using Tridion.ContentManager;
+using Tridion.ContentManager.CommunicationManagement;
+using Tridion.ContentManager.ContentManagement;
+using Tridion.ContentManager.ContentManagement.Fields;
+using Tridion.ContentManager.Templating;
+using Tridion.ContentManager.Templating.Assembly;
+
+namespace TaxonomySitemapNavigation
+{
+    public class TaxonomySitemapNav : ITemplate
+    {
+        private Engine engine;
+        private Package package;
+        private static readonly TemplatingLogger log = TemplatingLogger.GetLogger(typeof(TaxonomySitemapNav));
+
+        public void Transform(Engine engine, Package package)
+        {
+            this.engine = engine;
+            this.package = package;
+
+            try
+            {
+                log.Info("Inside TaxonomySitemapNav Transform");
+                System.Diagnostics.Debugger.Launch();
+                Page page = null;
+                Item pageItem = package.GetByType(ContentType.Page);
+
+                if (pageItem != null)
+                {
+                    page = engine.GetObject(pageItem.GetAsSource().GetValue("ID")) as Page;
+                }
+                else
+                {
+                    throw new InvalidOperationException("No Page found. Verify that this template is used with a Page.");
+                }
+
+                // ── TAXONOMY-BASED NAVIGATION ─────────────────────────────────────────
+                if (page.Metadata != null && page.MetadataSchema != null)
+                {
+                    List<TaxonomyBasedNavigationItem> taxonomyBasedNavigationItems =
+                        new List<TaxonomyBasedNavigationItem>();
+
+                    ItemFields metaFields = new ItemFields(page.Metadata, page.MetadataSchema);
+                    KeywordFieldDefinition kwField =
+                        (KeywordFieldDefinition)metaFields["sitemapKeyword"].Definition;
+
+                    Category selectedKw = kwField.Category;
+
+                    if (selectedKw != null)
+                    {
+                        string categoryId = selectedKw.Id;
+
+                        if (!string.IsNullOrEmpty(categoryId))
+                        {
+                            TcmUri categoryUri = new TcmUri(categoryId);
+                            Session session = engine.GetSession();
+                            Category category = (Category)session.GetObject(categoryUri);
+
+                            IEnumerable<Keyword> keywords = category.GetKeywords();
+
+                            foreach (Keyword keyword in keywords)
+                            {
+                                log.Info($"keyword.Title : {keyword.Title}");
+                                log.Info($"keyword.Id    : {keyword.Id}");
+                                log.Info($"keyword.IsRoot: {keyword.IsRoot}");
+
+                                // FIX 1: Reset urlMapNavigationItems per keyword (was shared/accumulating)
+                                List<UrlMapNavigationItem> urlMapNavigationItems =
+                                    new List<UrlMapNavigationItem>();
+
+                                UsingItemsFilter filter = new UsingItemsFilter(session)
+                                {
+                                    ItemTypes = new[] { ItemType.Page }
+                                };
+
+                                foreach (Page assignedPage in keyword.GetUsingItems(filter))
+                                {
+                                    if(assignedPage.PublishLocationPath.EndsWith(".html"))
+                                    {
+                                        // FIX 2: Corrected inverted null/empty check for displayTitle
+                                        string displayTitle = !string.IsNullOrEmpty(keyword.Key)
+                                            ? keyword.Key
+                                            : assignedPage.Title;
+
+                                        urlMapNavigationItems.Add(new UrlMapNavigationItem
+                                        {
+                                            keywordId = keyword.Id,
+                                            url = assignedPage.PublishLocationPath,
+                                            displayTitle = displayTitle
+                                        });
+                                    }
+                                
+                                }
+
+                                // FIX 3: Build the nav item cleanly — no redundant foreach loop
+                                TaxonomyBasedNavigationItem taxonomyBasedNavigationItem =
+                                    new TaxonomyBasedNavigationItem
+                                    {
+                                        title = keyword.Title,
+                                        id = keyword.Id.ToString(),
+                                        isRoot = keyword.IsRoot,
+                                        // FIX 4: Assign only this keyword's URLs (already filtered above)
+                                        urlMapNavigationItem = urlMapNavigationItems
+                                    };
+
+                                if (keyword.IsRoot)
+                                {
+                                    taxonomyBasedNavigationItems.Add(taxonomyBasedNavigationItem);
+                                }
+                                else if (keyword.ParentKeywords.Count > 0)
+                                {
+                                    string parentId = keyword.ParentKeywords[0].Id.ToString();
+                                    TaxonomyBasedNavigationItem parent =
+                                        FindById(taxonomyBasedNavigationItems, parentId);
+
+                                    if (parent != null)
+                                    {
+                                        parent.childTaxonomyBasedNavigationItem
+                                              .Add(taxonomyBasedNavigationItem);
+                                    }
+                                    else
+                                    {
+                                        // Parent not yet added (ordering issue) — add at root level
+                                        log.Info($"Parent not found for keyword {keyword.Id}, adding at root.");
+                                        taxonomyBasedNavigationItems.Add(taxonomyBasedNavigationItem);
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── SERIALIZE TO JSON ─────────────────────────────────────────
+                        string sitemapJson = JsonSerialize(taxonomyBasedNavigationItems);
+                        log.Info($"Taxonomy JSON output: {sitemapJson}");
+
+                        package.PushItem(Package.OutputName,
+                            package.CreateStringItem(ContentType.Text, sitemapJson));
+                    }
+                }
+                // ── STRUCTURE-GROUP FALLBACK ──────────────────────────────────────────
+                else if (page != null)
+                {
+                    StructureGroup currentSG = page.OrganizationalItem as StructureGroup;
+
+                    if (currentSG != null)
+                    {
+                        // Root navigation item representing the top-level Structure Group
+                        List<TaxonomyBasedNavigationItem> sgNavigationItems = new List<TaxonomyBasedNavigationItem>();
+
+                        Action<StructureGroup, TaxonomyBasedNavigationItem> processStructureGroup = null;
+                        processStructureGroup = (sg, parentNavItem) =>
+                        {
+
+                            if (!sg.Title.StartsWith("_"))
+                            {
+                                // Build a nav item for this Structure Group
+                                TaxonomyBasedNavigationItem sgNavItem = new TaxonomyBasedNavigationItem
+                                {
+                                    title = sg.Title,
+                                    id = sg.Id.ToString(),
+                                    isRoot = (parentNavItem == null)
+                                };
+
+                                // Get all pages inside this SG
+                                OrganizationalItemItemsFilter pageFilter =
+                                    new OrganizationalItemItemsFilter(engine.GetSession())
+                                    {
+                                        ItemTypes = new ItemType[] { ItemType.Page }
+                                    };
+
+                                foreach (IdentifiableObject item in sg.GetItems(pageFilter))
+                                {
+                                    Page childPage = item as Page;
+                                    if (childPage == null) continue;
+
+                                    // Skip hidden pages (prefixed with _)
+                                    if (childPage.OrganizationalItem.Title.StartsWith("_")
+                                        || childPage.Title.StartsWith("_")
+                                        || childPage.PublishLocationUrl == null
+                                        || !childPage.PublishLocationUrl.EndsWith(".html"))
+                                        continue;
+
+                                    sgNavItem.urlMapNavigationItem.Add(new UrlMapNavigationItem
+                                    {
+                                        url = childPage.PublishLocationUrl.Replace('\\', '/'),
+                                        keywordId = childPage.Id.ToString(),   // use page TcmUri as identifier
+                                        displayTitle = childPage.Title
+                                    });
+                                }
+
+                                // Attach to parent or add as root
+                                if (parentNavItem == null)
+                                {
+                                    sgNavigationItems.Add(sgNavItem);
+                                }
+                                else
+                                {
+                                    parentNavItem.childTaxonomyBasedNavigationItem.Add(sgNavItem);
+                                }
+
+                                // Recurse into nested Structure Groups
+                                OrganizationalItemItemsFilter sgFilter =
+                                    new OrganizationalItemItemsFilter(engine.GetSession())
+                                    {
+                                        ItemTypes = new ItemType[] { ItemType.StructureGroup }
+                                    };
+
+                                foreach (IdentifiableObject item in sg.GetItems(sgFilter))
+                                {
+                                    StructureGroup nestedSG = item as StructureGroup;
+                                    if (nestedSG != null)
+                                        processStructureGroup(nestedSG, sgNavItem);  // pass current as parent
+                                }
+                            }
+                            
+                        };
+
+                        // Start recursion from root SG with no parent
+                        processStructureGroup(currentSG, null);
+
+                        string sitemapJson = JsonSerialize(sgNavigationItems);
+                        log.Info($"Structure Group JSON output: {sitemapJson}");
+
+                        package.PushItem(Package.OutputName,
+                            package.CreateStringItem(ContentType.Text, sitemapJson));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log.Error($"TaxonomySitemapNav error: {ex.Message}");
+                log.Debug($"TaxonomySitemapNav stack trace: {ex.StackTrace}");
+            }
+        }
+
+        // ── HELPERS ───────────────────────────────────────────────────────────────────
+
+        protected string JsonSerialize(object objectToSerialize, bool prettyPrint = false,
+            JsonSerializerSettings settings = null)
+        {
+            if (settings == null)
+            {
+                settings = new JsonSerializerSettings
+                {
+                    NullValueHandling = NullValueHandling.Ignore
+                };
+            }
+
+            Newtonsoft.Json.Formatting jsonFormatting = prettyPrint
+                ? Newtonsoft.Json.Formatting.Indented
+                : Newtonsoft.Json.Formatting.None;
+
+            return JsonConvert.SerializeObject(objectToSerialize, jsonFormatting, settings);
+        }
+
+        public class Utf8StringWriter : StringWriter
+        {
+            public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
+        }
+
+        public static TaxonomyBasedNavigationItem FindById(
+            IEnumerable<TaxonomyBasedNavigationItem> items, string id)
+        {
+            foreach (var item in items)
+            {
+                if (item.id == id)
+                    return item;
+
+                if (item.childTaxonomyBasedNavigationItem != null)
+                {
+                    var found = FindById(item.childTaxonomyBasedNavigationItem, id);
+                    if (found != null)
+                        return found;
+                }
+            }
+            return null;
+        }
+    }
+
+    // ── MODELS ────────────────────────────────────────────────────────────────────────
+
+    [XmlRoot("NavigationItem")]
+    public class TaxonomyBasedNavigationItem
+    {
+        // FIX 5: Changed public fields to properties with [JsonProperty] for reliable serialization
+        [JsonProperty("title")]
+        public string title { get; set; }
+
+        [JsonProperty("id")]
+        public string id { get; set; }
+
+        [JsonProperty("isRoot")]
+        public bool isRoot { get; set; }
+
+        // FIX 6: Changed to property with JsonProperty — fields were unreliable with Json.NET attributes
+        [JsonProperty("childTaxonomyBasedNavigationItem")]
+        [XmlElement("Child")]
+        public List<TaxonomyBasedNavigationItem> childTaxonomyBasedNavigationItem { get; set; }
+            = new List<TaxonomyBasedNavigationItem>();
+
+        [JsonProperty("urlMapNavigationItem")]
+        [XmlElement("UrlMap")]
+        public List<UrlMapNavigationItem> urlMapNavigationItem { get; set; }
+            = new List<UrlMapNavigationItem>();
+    }
+
+    [XmlRoot("UrlMapNavigationItem")]
+    public class UrlMapNavigationItem
+    {
+        [JsonProperty("url")]
+        public string url { get; set; }
+
+        [JsonProperty("keywordId")]
+        public string keywordId { get; set; }
+
+        [JsonProperty("displayTitle")]
+        public string displayTitle { get; set; }
+    }
+}

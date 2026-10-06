@@ -1,0 +1,497 @@
+﻿using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Xml;
+using System.Xml.Linq;
+using System.Xml.Serialization;
+using Tridion.ContentManager;
+using Tridion.ContentManager.CommunicationManagement;
+using Tridion.ContentManager.ContentManagement;
+using Tridion.ContentManager.ContentManagement.Fields;
+using Tridion.ContentManager.Templating;
+using Tridion.ContentManager.Templating.Assembly;
+
+namespace TaxonomySitemapNavigation
+{
+    public class TaxonomySitemapNav : ITemplate
+    {
+        private Engine engine;
+        private Package package;
+        private static readonly TemplatingLogger log = TemplatingLogger.GetLogger(typeof(TaxonomySitemapNav));
+
+        public void Transform(Engine engine, Package package)
+        {
+            this.engine = engine;
+            this.package = package;
+            //   System.Diagnostics.Debugger.Launch();
+            try
+            {
+                log.Info("Inside TaxonomySitemapNav Transform");
+                //  System.Diagnostics.Debugger.Launch();
+                Page page = null;
+                Item pageItem = package.GetByType(ContentType.Page);
+
+                if (pageItem != null)
+                {
+                    page = engine.GetObject(pageItem.GetAsSource().GetValue("ID")) as Page;
+                }
+                else
+                {
+                    throw new InvalidOperationException("No Page found. Verify that this template is used with a Page.");
+                }
+
+                // ── TAXONOMY-BASED NAVIGATION ─────────────────────────────────────────
+                if (page.Metadata != null && page.MetadataSchema != null)
+                {
+                    List<TaxonomyBasedNavigationItem> taxonomyBasedNavigationItems =
+                        new List<TaxonomyBasedNavigationItem>();
+
+                    ItemFields metaFields = new ItemFields(page.Metadata, page.MetadataSchema);
+                    KeywordFieldDefinition kwField =
+                        (KeywordFieldDefinition)metaFields["sitemapKeyword"].Definition;
+
+                    Category selectedKw = kwField.Category;
+
+                    if (selectedKw != null)
+                    {
+                        string categoryId = selectedKw.Id;
+
+                        if (!string.IsNullOrEmpty(categoryId))
+                        {
+                            TcmUri categoryUri = new TcmUri(categoryId);
+                            Session session = engine.GetSession();
+
+                            int currentPublicationId = page.Id.PublicationId; // 46 = German
+
+                            // Publication TCM URI format: tcm:0-{publicationId}-1
+                            // e.g. German pub 46 → tcm:0-46-1
+                            Publication currentPub = (Publication)session.GetObject(
+                                new TcmUri(currentPublicationId, ItemType.Publication, 0));
+
+                            string pubUrlPrefix = currentPub.RootStructureGroup.PublishLocationUrl
+                                .TrimEnd('/');  // e.g. "/de-DE"
+
+                            // pubUrlPrefix = "/de-DE"
+
+
+
+                            Category category = (Category)session.GetObject(categoryUri);
+
+
+                            IEnumerable<Keyword> keywords = category.GetKeywords();
+
+
+                            foreach (Keyword keyword in keywords)
+                            {
+                                log.Info($"keyword.Title : {keyword.Title}");
+                                log.Info($"keyword.Id    : {keyword.Id}");
+                                log.Info($"keyword.IsRoot: {keyword.IsRoot}");
+
+                                // FIX 1: Reset urlMapNavigationItems per keyword (was shared/accumulating)
+                                List<UrlMapNavigationItem> urlMapNavigationItems =
+                                    new List<UrlMapNavigationItem>();
+
+
+                                UsingItemsFilter filter = new UsingItemsFilter(session)
+                                {
+                                    ItemTypes = new[] { ItemType.Page },
+                                    BaseColumns = ListBaseColumns.IdAndTitle
+                                };
+
+                                List<Page> usingPages = keyword.GetUsingItems(filter).Cast<Page>().ToList();
+
+                                // Build a set of item IDs that have a localized version in current publication
+                                // e.g. tcm:44-29552-64 is localized as tcm:46-29552-64 → itemId 29552 is localized
+                                HashSet<int> localizedItemIds = new HashSet<int>(
+                                    usingPages
+                                        .Where(p => p.Id.PublicationId == currentPublicationId)
+                                        .Select(p => p.Id.ItemId)
+                                );
+
+
+
+                                foreach (Page assignedPage in usingPages)
+                                {
+                                    if (assignedPage.PublishLocationUrl.EndsWith(".html"))
+                                    {
+                                        int pageItemId = assignedPage.Id.ItemId;
+                                        int pagePubId = assignedPage.Id.PublicationId;
+
+                                        if (pagePubId != currentPublicationId && localizedItemIds.Contains(pageItemId))
+                                        {
+                                            // Skip — localized German version exists, this English one is redundant
+                                            log.Info($"Skipping inherited page tcm:{assignedPage.Id} — localized version exists");
+                                            continue;
+                                        }
+
+                                        // ── FIX: check published status for EVERY page in the loop ───────────
+                                        if (!assignedPage.IsPublishedInContext)
+                                        {
+                                            log.Info($"Skipping unpublished page: tcm:{assignedPage.Id} '{assignedPage.Title}'");
+                                            continue;
+                                        }
+
+                                        // Build the URL
+                                        string rawUrl = assignedPage.PublishLocationPath.Replace('\\', '/');
+
+                                        if (pagePubId != currentPublicationId)
+                                        {
+                                            // Non-localized inherited page — prepend German pub prefix
+                                            rawUrl = pubUrlPrefix + "/" + rawUrl.TrimStart('/');
+                                            log.Info($"Prepended pub prefix to inherited page: {rawUrl}");
+                                        }
+
+                                        urlMapNavigationItems.Add(new UrlMapNavigationItem
+                                        {
+                                            keywordId = keyword.Id,
+                                            url = rawUrl,
+                                            displayTitle = !string.IsNullOrEmpty(keyword.Key) ? keyword.Key : assignedPage.Title
+                                        });
+                                    }
+
+                                }
+
+                                // FIX 3: Build the nav item cleanly — no redundant foreach loop
+                                TaxonomyBasedNavigationItem taxonomyBasedNavigationItem =
+                                    new TaxonomyBasedNavigationItem
+                                    {
+                                        title = keyword.Title,
+                                        id = keyword.Id.ToString(),
+                                        isRoot = keyword.IsRoot,
+                                        directory = keyword.Key,  // Taxomomy key
+                                        // FIX 4: Assign only this keyword's URLs (already filtered above)
+                                        urlMapNavigationItem = urlMapNavigationItems
+                                    };
+
+                                if (keyword.IsRoot)
+                                {
+                                    taxonomyBasedNavigationItems.Add(taxonomyBasedNavigationItem);
+                                }
+                                else if (keyword.ParentKeywords.Count > 0)
+                                {
+                                    string parentId = keyword.ParentKeywords[0].Id.ToString();
+                                    TaxonomyBasedNavigationItem parent =
+                                        FindById(taxonomyBasedNavigationItems, parentId);
+
+                                    if (parent != null)
+                                    {
+                                        parent.childTaxonomyBasedNavigationItem
+                                              .Add(taxonomyBasedNavigationItem);
+                                    }
+                                    else
+                                    {
+                                        // Parent not yet added (ordering issue) — add at root level
+                                        log.Info($"Parent not found for keyword {keyword.Id}, adding at root.");
+                                        taxonomyBasedNavigationItems.Add(taxonomyBasedNavigationItem);
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── SERIALIZE TO JSON ─────────────────────────────────────────
+                        string sitemapJson = JsonSerialize(taxonomyBasedNavigationItems);
+                        log.Info($"Taxonomy JSON output: {sitemapJson}");
+
+                        package.PushItem(Package.OutputName,
+                            package.CreateStringItem(ContentType.Text, sitemapJson));
+                    }
+                }
+                // ── STRUCTURE-GROUP FALLBACK ──────────────────────────────────────────
+                else if (page != null)
+                {
+                    //    System.Diagnostics.Debugger.Launch();
+                    StructureGroup currentSG = page.OrganizationalItem as StructureGroup;
+
+                    if (currentSG != null)
+                    {
+                        List<TaxonomyBasedNavigationItem> sgNavigationItems = new List<TaxonomyBasedNavigationItem>();
+                        Dictionary<string, TaxonomyBasedNavigationItem> prefixToNavItem =
+                            new Dictionary<string, TaxonomyBasedNavigationItem>();
+
+                        // Helper: extract leading digits e.g. "002 Support" → "002", "Home" → ""
+                        Func<string, string> getPrefix = (name) =>
+                        {
+                            if (string.IsNullOrEmpty(name)) return string.Empty;
+                            int i = 0;
+                            while (i < name.Length && char.IsDigit(name[i])) i++;
+                            return i > 0 ? name.Substring(0, i) : string.Empty;
+                        };
+
+                        // Helper: collect pages from an SG, index first, skip _ prefixed
+                        Func<StructureGroup, List<UrlMapNavigationItem>> collectPages = (sg) =>
+                        {
+                            var result = new List<UrlMapNavigationItem>();
+                            OrganizationalItemItemsFilter pf =
+                                new OrganizationalItemItemsFilter(engine.GetSession())
+                                {
+                                    ItemTypes = new ItemType[] { ItemType.Page }
+                                };
+
+                            Page idxPage = null;
+                            List<Page> others = new List<Page>();
+
+                            foreach (IdentifiableObject pi in sg.GetItems(pf))
+                            {
+                                Page cp = pi as Page;
+                                if (cp == null) continue;
+                                if (cp.Title.StartsWith("_") || cp.FileName.StartsWith("_") ||
+                                    cp.PublishLocationUrl == null ||
+                                    !cp.PublishLocationUrl.EndsWith(".html") ||
+                                    !cp.IsPublishedInContext) continue;
+
+                                if (cp.FileName.Equals("index", StringComparison.OrdinalIgnoreCase))
+                                    idxPage = cp;
+                                else
+                                    others.Add(cp);
+                            }
+
+                            if (idxPage != null)
+                                result.Add(new UrlMapNavigationItem
+                                {
+                                    url = idxPage.PublishLocationUrl.Replace('\\', '/'),
+                                    keywordId = idxPage.Id.ToString(),
+                                    displayTitle = idxPage.Title
+                                });
+
+                            foreach (Page p in others)
+                                result.Add(new UrlMapNavigationItem
+                                {
+                                    url = p.PublishLocationUrl.Replace('\\', '/'),
+                                    keywordId = p.Id.ToString(),
+                                    displayTitle = p.Title
+                                });
+
+                            return result;
+                        };
+
+                        // ── RECURSIVE: build nav item for an SG and all its children ──────
+                        Action<StructureGroup, TaxonomyBasedNavigationItem, bool> buildNavItem = null;
+                        buildNavItem = (sg, parentNavItem, parentIsRoot) =>
+                        {
+                            // Skip _ prefixed SGs entirely
+                            if (sg.Title.StartsWith("_"))
+                            {
+                                log.Info($"Skipping hidden SG: {sg.Title}");
+                                return;
+                            }
+
+                            string prefix = getPrefix(sg.Title);
+                            bool isNumbered = !string.IsNullOrEmpty(prefix);
+
+                            // isRoot: numbered SGs at any level are roots (002, 003, 000 Customer Support)
+                            // non-numbered SGs (Products) are not roots
+                            TaxonomyBasedNavigationItem navItem = new TaxonomyBasedNavigationItem
+                            {
+                                title = sg.Title,
+                                id = sg.Id.ToString(),
+                                isRoot = isNumbered,
+                                directory = sg.Directory.ToString(),
+                            };
+
+                            // Collect this SG's own pages
+                            foreach (var urlItem in collectPages(sg))
+                                navItem.urlMapNavigationItem.Add(urlItem);
+
+                            // Attach to parent or root list
+                            if (parentNavItem == null)
+                                sgNavigationItems.Add(navItem);
+                            else
+                                parentNavItem.childTaxonomyBasedNavigationItem.Add(navItem);
+
+                            // Register prefix ONLY for top-level SGs so Home-level pages group correctly.
+                            // Nested SGs like "000 Customer Support" inside "002 Support" must NOT
+                            // register "000" — otherwise "000 Home Page" would land under them.
+                            if (isNumbered && parentNavItem == null && !prefixToNavItem.ContainsKey(prefix))
+                                prefixToNavItem[prefix] = navItem;
+
+                            // ── RECURSE into child SGs ────────────────────────────────────
+                            OrganizationalItemItemsFilter sgf =
+                                new OrganizationalItemItemsFilter(engine.GetSession())
+                                {
+                                    ItemTypes = new ItemType[] { ItemType.StructureGroup }
+                                };
+
+                            foreach (IdentifiableObject ci in sg.GetItems(sgf))
+                            {
+                                StructureGroup childSg = ci as StructureGroup;
+                                if (childSg != null)
+                                    buildNavItem(childSg, navItem, isNumbered);
+                            }
+                        };
+
+                        // ── STEP 1: Process all top-level SGs under Home ──────────────────
+                        OrganizationalItemItemsFilter topSgFilter =
+                            new OrganizationalItemItemsFilter(engine.GetSession())
+                            {
+                                ItemTypes = new ItemType[] { ItemType.StructureGroup }
+                            };
+
+                        foreach (IdentifiableObject sgItem in currentSG.GetItems(topSgFilter))
+                        {
+                            StructureGroup sg = sgItem as StructureGroup;
+                            if (sg != null)
+                                buildNavItem(sg, null, false);
+                        }
+
+                        // ── STEP 2: Match pages sitting directly in Home SG ───────────────
+                        // "000 Home Page" → prefix "000" → no matching SG → goes into Home nav item
+                        TaxonomyBasedNavigationItem homeNavItem = null;
+
+                        OrganizationalItemItemsFilter homePagesFilter =
+                            new OrganizationalItemItemsFilter(engine.GetSession())
+                            {
+                                ItemTypes = new ItemType[] { ItemType.Page }
+                            };
+
+                        foreach (IdentifiableObject pItem in currentSG.GetItems(homePagesFilter))
+                        {
+                            Page childPage = pItem as Page;
+                            if (childPage == null) continue;
+
+                            if (childPage.Title.StartsWith("_") || childPage.FileName.StartsWith("_") ||
+                                childPage.PublishLocationUrl == null ||
+                                !childPage.PublishLocationUrl.EndsWith(".html") ||
+                                !childPage.IsPublishedInContext) continue;
+
+                            UrlMapNavigationItem urlItem = new UrlMapNavigationItem
+                            {
+                                url = childPage.PublishLocationUrl.Replace('\\', '/'),
+                                keywordId = childPage.Id.ToString(),
+                                displayTitle = childPage.Title
+                            };
+
+                            string pagePrefix = getPrefix(childPage.Title);
+
+                            if (!string.IsNullOrEmpty(pagePrefix) && prefixToNavItem.ContainsKey(pagePrefix))
+                            {
+                                // e.g. "002 Home Page" → under 002 Support nav item
+                                prefixToNavItem[pagePrefix].urlMapNavigationItem.Add(urlItem);
+                                log.Info($"Grouped page '{childPage.Title}' under prefix '{pagePrefix}'");
+                            }
+                            else
+                            {
+                                // No SG match → goes under synthetic Home nav item
+                                if (homeNavItem == null)
+                                {
+                                    homeNavItem = new TaxonomyBasedNavigationItem
+                                    {
+                                        title = currentSG.Title,
+                                        id = currentSG.Id.ToString(),
+                                        isRoot = true,
+                                        directory = currentSG.IsRootOrganizationalItem ? currentSG.Title.ToString() : currentSG.Directory
+                                    };
+                                    sgNavigationItems.Insert(0, homeNavItem);
+                                }
+                                homeNavItem.urlMapNavigationItem.Add(urlItem);
+                                log.Info($"Grouped page '{childPage.Title}' under Home SG");
+                            }
+                        }
+
+                        string sitemapJson = JsonSerialize(sgNavigationItems);
+                        log.Info($"Structure Group JSON output: {sitemapJson}");
+
+                        package.PushItem(Package.OutputName,
+                            package.CreateStringItem(ContentType.Text, sitemapJson));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log.Error($"TaxonomySitemapNav error: {ex.Message}");
+                log.Debug($"TaxonomySitemapNav stack trace: {ex.StackTrace}");
+            }
+        }
+
+        // ── HELPERS ───────────────────────────────────────────────────────────────────
+
+        protected string JsonSerialize(object objectToSerialize, bool prettyPrint = false,
+            JsonSerializerSettings settings = null)
+        {
+            if (settings == null)
+            {
+                settings = new JsonSerializerSettings
+                {
+                    NullValueHandling = NullValueHandling.Ignore
+                };
+            }
+
+            Newtonsoft.Json.Formatting jsonFormatting = prettyPrint
+                ? Newtonsoft.Json.Formatting.Indented
+                : Newtonsoft.Json.Formatting.None;
+
+            return JsonConvert.SerializeObject(objectToSerialize, jsonFormatting, settings);
+        }
+
+        public class Utf8StringWriter : StringWriter
+        {
+            public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
+        }
+
+        public static TaxonomyBasedNavigationItem FindById(
+            IEnumerable<TaxonomyBasedNavigationItem> items, string id)
+        {
+            foreach (var item in items)
+            {
+                if (item.id == id)
+                    return item;
+
+                if (item.childTaxonomyBasedNavigationItem != null)
+                {
+                    var found = FindById(item.childTaxonomyBasedNavigationItem, id);
+                    if (found != null)
+                        return found;
+                }
+            }
+            return null;
+        }
+    }
+
+    // ── MODELS ────────────────────────────────────────────────────────────────────────
+
+    [XmlRoot("NavigationItem")]
+    public class TaxonomyBasedNavigationItem
+    {
+        // FIX 5: Changed public fields to properties with [JsonProperty] for reliable serialization
+        [JsonProperty("title")]
+        public string title { get; set; }
+
+        [JsonProperty("id")]
+        public string id { get; set; }
+
+        [JsonProperty("isRoot")]
+        public bool isRoot { get; set; }
+
+
+        [JsonProperty("directory")]
+        public string directory { get; set; }
+
+
+
+        // FIX 6: Changed to property with JsonProperty — fields were unreliable with Json.NET attributes
+        [JsonProperty("childTaxonomyBasedNavigationItem")]
+        [XmlElement("Child")]
+        public List<TaxonomyBasedNavigationItem> childTaxonomyBasedNavigationItem { get; set; }
+            = new List<TaxonomyBasedNavigationItem>();
+
+        [JsonProperty("urlMapNavigationItem")]
+        [XmlElement("UrlMap")]
+        public List<UrlMapNavigationItem> urlMapNavigationItem { get; set; }
+            = new List<UrlMapNavigationItem>();
+    }
+
+    [XmlRoot("UrlMapNavigationItem")]
+    public class UrlMapNavigationItem
+    {
+        [JsonProperty("url")]
+        public string url { get; set; }
+
+        [JsonProperty("keywordId")]
+        public string keywordId { get; set; }
+
+        [JsonProperty("displayTitle")]
+        public string displayTitle { get; set; }
+    }
+}

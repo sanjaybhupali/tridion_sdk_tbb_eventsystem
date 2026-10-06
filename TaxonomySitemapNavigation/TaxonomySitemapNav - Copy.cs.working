@@ -1,0 +1,497 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Xml;
+using System.Xml.Linq;
+using System.Xml.Serialization;
+using Tridion.ContentManager;
+using Tridion.ContentManager.CommunicationManagement;
+using Tridion.ContentManager.ContentManagement;
+using Tridion.ContentManager.ContentManagement.Fields;
+using Tridion.ContentManager.Publishing;
+using Tridion.ContentManager.Templating;
+using Tridion.ContentManager.Templating.Assembly;
+using static System.Collections.Specialized.BitVector32;
+
+namespace TaxonomySitemapNavigation
+{
+    public class TaxonomySitemapNav : ITemplate
+    {
+        private Engine engine;
+        private Package package;
+        private static readonly TemplatingLogger log = TemplatingLogger.GetLogger(typeof(TaxonomySitemapNav));
+
+        public void Transform(Engine engine, Package package)
+        {
+            //Initialize
+            this.engine = engine;
+            this.package = package;
+            try
+            {
+                log.Info($"Inside TaxonomySitemapNav Transform");
+
+                System.Diagnostics.Debugger.Launch();
+                System.Diagnostics.Debugger.Break();
+                Page page = null;
+                List<TaxonomyBasedNavigationItem> taxonomyBasedNavigationItems = new List<TaxonomyBasedNavigationItem>();
+
+                Item pageItem = package.GetByType(ContentType.Page);
+                if (pageItem != null)
+                {
+                    page = engine.GetObject(pageItem.GetAsSource().GetValue("ID")) as Page;
+                }
+                else
+                {
+                    throw new InvalidOperationException("No Page found.  Verify that this template is used with a Page.");
+                }
+                // get the publication object
+
+
+                string categoryId = string.Empty;
+                string xmlContent = string.Empty;
+
+
+                //if page has metadata
+                if (page.Metadata != null && page.MetadataSchema != null)
+                {
+                    // Get component
+                    var component = page.ComponentPresentations[0].Component;
+                    List<UrlMapNavigationItem> urlMapNavigationItems = new List<UrlMapNavigationItem>();
+                    if (component != null)
+                    {
+                        // var s = component.Content;
+                        // Get the fields and schema
+                        ItemFields fields = new ItemFields(component.Content, component.Schema);
+
+                        foreach (var field in fields)
+                        {
+                            if (field != null)
+                            {
+                                List<ItemFields> embeddedSchemaFields = ((EmbeddedSchemaField)field).Values.ToList();
+                                if (embeddedSchemaFields != null && embeddedSchemaFields.Count > 0)
+                                {
+                                    foreach (var embeddedSchemaField in embeddedSchemaFields)
+                                    {
+                                        if (embeddedSchemaField != null)
+                                        {
+                                            UrlMapNavigationItem urlMapNavigationItem = new UrlMapNavigationItem();
+                                            foreach (var value in embeddedSchemaField)
+                                            {
+
+
+                                                if (value.Name == "sitemapKeyword")
+                                                {
+                                                    KeywordField keyword = ((KeywordField)value);
+
+
+                                                    if (!string.IsNullOrWhiteSpace(keyword?.Value?.Title))
+                                                    {
+                                                        urlMapNavigationItem.categoryTitle = keyword.Value.Title;
+                                                    }
+
+
+                                                    if (!string.IsNullOrWhiteSpace(keyword?.Value?.Id))
+                                                    {
+                                                        urlMapNavigationItem.keywordId = keyword.Value.Id;
+                                                    }
+
+
+                                                    if (!string.IsNullOrWhiteSpace(keyword?.Value?.Key))
+                                                    {
+                                                        urlMapNavigationItem.key = keyword.Value.Key;
+                                                    }
+
+
+                                                }
+                                                if (value.Name == "url")
+                                                {
+                                                    if (value is TextField textField && !string.IsNullOrWhiteSpace(textField.Value))
+                                                    {
+                                                        urlMapNavigationItem.url = textField.Value;
+                                                    }
+                                                }
+                                                if (value.Name == "component")
+                                                {
+                                                    if (value is TextField textField && !string.IsNullOrWhiteSpace(textField.Value))
+                                                    {
+                                                        urlMapNavigationItem.routeName = textField.Value;
+                                                    }
+                                                }
+                                                if (value.Name == "title")
+                                                {
+
+                                                    if (value is TextField textField && !string.IsNullOrWhiteSpace(textField.Value))
+                                                    {
+                                                        urlMapNavigationItem.displayTitle = textField.Value;
+                                                    }
+                                                }
+                                                if (value.Name == "visibility")
+                                                {
+                                                    if (value is TextField textField && !string.IsNullOrWhiteSpace(textField.Value))
+                                                    {
+                                                        urlMapNavigationItem.visibilityStatus = textField.Value;
+                                                    }
+                                                }
+                                            }
+                                            urlMapNavigationItems.Add(urlMapNavigationItem);
+                                        }
+
+                                    }
+                                }
+                            }
+                        }
+
+
+                        // get metadata sitemap
+                        // 2. Initialize ItemFields for the Page Metadata
+                        //  if (page.Metadata != null && page.MetadataSchema != null)
+                        //   {
+                        ItemFields metaFields = new ItemFields(page.Metadata, page.MetadataSchema);
+
+                        // 3. Access the specific Keyword field (XML name: sitemapKeyword)
+                        //  if (metaFields.Contains("sitemapKeyword"))
+                        //  {
+                        KeywordFieldDefinition kwField = (KeywordFieldDefinition)metaFields["sitemapKeyword"].Definition;
+                        // 4. Extract the Keyword (assuming single-valued; use .Values for multi)
+                        Category selectedKw = kwField.Category;
+
+                        if (selectedKw != null)
+                        {
+                            // 5. The OrganizationalItem of a Keyword is its Category
+                            categoryId = selectedKw.Id;
+                            string categoryName = selectedKw.Title;
+                            if (categoryId != string.Empty)
+                            {
+                                TcmUri categoryUri = new TcmUri(categoryId);
+
+                                Session session = engine.GetSession();
+                                Category category = (Category)session.GetObject(categoryUri);
+
+                                //   System.Diagnostics.Debugger.Launch();
+                                IEnumerable<Keyword> keywords = category.GetKeywords();
+                                foreach (Keyword keyword in keywords)
+                                {
+                                    log.Info($"keyword.Title : {keyword.Title}");
+                                    log.Info($"keyword.Id : {keyword.Id}");
+                                    log.Info($"keyword.IsRoot : {keyword.IsRoot}");
+
+
+
+
+                                    // Access keyword properties  
+                                    TaxonomyBasedNavigationItem taxonomyBasedNavigationItem = new TaxonomyBasedNavigationItem();
+
+                                    foreach (var item in urlMapNavigationItems)
+                                    {
+                                        taxonomyBasedNavigationItem.urlMapNavigationItem = urlMapNavigationItems.Where(s => s.keywordId == keyword.Id).ToList();
+
+                                    }
+
+
+                                    if (keyword.IsRoot)
+                                    {
+                                        taxonomyBasedNavigationItem.title = keyword.Title;
+                                        taxonomyBasedNavigationItem.id = keyword.Id.ToString();
+                                        taxonomyBasedNavigationItem.isRoot = keyword.IsRoot;
+
+                                        taxonomyBasedNavigationItems.Add(taxonomyBasedNavigationItem);
+                                    }
+                                    else
+                                    {
+                                        if (keyword.ParentKeywords.Count > 0)
+                                        {
+                                            var getParentTaxonomy = FindById(taxonomyBasedNavigationItems, keyword.ParentKeywords[0].Id.ToString());
+
+                                            if (getParentTaxonomy != null)
+                                            {
+
+                                                taxonomyBasedNavigationItem.title = keyword.Title;
+                                                taxonomyBasedNavigationItem.id = keyword.Id.ToString();
+                                                taxonomyBasedNavigationItem.isRoot = keyword.IsRoot;
+
+                                                getParentTaxonomy.childTaxonomyBasedNavigationItem.Add(taxonomyBasedNavigationItem);
+
+                                            }
+                                        }
+                                    }
+                                }
+
+                            }
+
+
+                            // Put the translate lables component into the package
+                            if (taxonomyBasedNavigationItems.Count > 0)
+                            {
+                                // CALL THE NEW GENERATOR HERE
+                                xmlContent = GenerateSitemapXml(taxonomyBasedNavigationItems);
+
+                                log.Info($"Converted Sitemap XML Content : {xmlContent}");
+
+                            }
+
+
+
+
+                            package.PushItem(Package.OutputName, package.CreateStringItem(ContentType.Text, xmlContent));
+                        }
+                        //  }
+                        //   }
+
+
+
+
+                    }
+                    else
+                    {
+
+                        log.Info($"Url Mapping component not available in the sitemap page");
+                        throw new InvalidOperationException($"Url Mapping component not available in the sitemap page.{page.Id}");
+
+                    }
+                }
+                else
+                {
+                    // str grp
+                    if (page != null)
+                    {
+                        StructureGroup currentSG = page.OrganizationalItem as StructureGroup;
+
+                        if (currentSG != null)
+                        {
+                            XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
+                            XElement urlSet = new XElement(ns + "urlset");
+
+                            // Recursive action to crawl current SG and its nested child SGs
+                            Action<StructureGroup> processStructureGroup = null;
+                            processStructureGroup = (sg) =>
+                            {
+                                // Derive relative folder path cleanly from WebDavUrl 
+                                // e.g. "/webdav/Pub/Building Blocks/StructureGroups/Products" -> "products"
+                                string webDav = sg.WebDavUrl;
+                                string currentPath = string.Empty;
+
+                                if (!string.IsNullOrEmpty(webDav))
+                                {
+                                    string[] segments = webDav.Split(new char[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                                    // Exclude publication name and root artifacts if needed, keeping target subfolders
+                                    if (segments.Length > 3)
+                                    {
+                                        // Skip root level containers and take sub-path segments
+                                        currentPath = string.Join("/", segments.Skip(3));
+                                    }
+                                }
+
+                                // Get Pages in the current Structure Group
+                                OrganizationalItemItemsFilter pageFilter = new OrganizationalItemItemsFilter(engine.GetSession());
+                                pageFilter.ItemTypes = new ItemType[] { ItemType.Page };
+
+                                foreach (IdentifiableObject item in sg.GetItems(pageFilter))
+                                {
+                                    Page childPage = item as Page;
+                                    if (childPage != null)
+                                    {
+                                        string fileName = childPage.FileName;
+                                        string pageFile = fileName.Equals("index", StringComparison.OrdinalIgnoreCase) ? "index.html" : fileName + ".html";
+
+                                        // Construct final directory-aware loc path
+                                        string loc = string.IsNullOrEmpty(currentPath) ? "/" + pageFile : "/" + currentPath + "/" + pageFile;
+
+                                        XElement urlElement = new XElement(ns + "url",
+                                            new XElement(ns + "loc", loc),
+                                            //  new XElement(ns + "lastmod", childPage.Info.RevisionDate.ToString("yyyy-MM-dd")),
+                                            new XElement(ns + "priority", "0.5"),
+                                            new XElement(ns + "categoryTitle", childPage.Title),
+                                            new XElement(ns + "RouteName", fileName),
+                                            new XElement(ns + "DisplayTitle", childPage.Title),
+                                            new XElement(ns + "VisibilityStatus", "True")
+                                        );
+                                        urlSet.Add(urlElement);
+                                    }
+                                }
+
+                                // Recurse nested child Structure Groups
+                                OrganizationalItemItemsFilter sgFilter = new OrganizationalItemItemsFilter(engine.GetSession());
+                                sgFilter.ItemTypes = new ItemType[] { ItemType.StructureGroup };
+
+                                foreach (IdentifiableObject item in sg.GetItems(sgFilter))
+                                {
+                                    StructureGroup nestedSG = item as StructureGroup;
+                                    if (nestedSG != null)
+                                    {
+                                        processStructureGroup(nestedSG);
+                                    }
+                                }
+                            };
+
+                            // Start processing recursively from the current SG context
+                            processStructureGroup(currentSG);
+
+                            string innerXml = urlSet.ToString(SaveOptions.DisableFormatting);
+                            string escapedXml = innerXml.Replace("\"", "\\\"");
+                        //    "{{\"data\": {{\"typedPage\": {{\"rawContent\": {{\"content\": \"{0}\"}}}}}}}}",
+                            string jsonContent = string.Format("{0}",escapedXml);
+
+                            package.PushItem(Package.OutputName, package.CreateStringItem(ContentType.Text, jsonContent));
+                        }
+                    }
+                    // end str grp
+                }
+
+
+
+
+            }
+            catch (Exception ex)
+            {
+                log.Debug($"Debug TaxonomySitemapNav Error occured : {ex.Message} ");
+
+                log.Error($"Error TaxonomySitemapNav Error occured : {ex.Message} ");
+            }
+        }
+
+        private string GenerateSitemapXml(List<TaxonomyBasedNavigationItem> items)
+        {
+            var sitemapSet = new SitemapUrlSet();
+
+            // 1. Flatten all navigation items into one big list of URLs
+            foreach (var item in items)
+            {
+                SitemapGenerator.FlattenAndPopulate(item, sitemapSet.Urls);
+            }
+            // --- CLEANUP LOGIC STARTS HERE ---
+            // 1. Create a blank namespace container
+            var ns = new XmlSerializerNamespaces();
+
+            // 2. Add only the sitemaps.org namespace with no prefix (the empty string "")
+            ns.Add("", "http://www.sitemaps.org/schemas/sitemap/0.9");
+            // 1. Define your formatting settings
+            var settings = new XmlWriterSettings
+            {
+                Indent = true,                // Set to 'false' to remove \r\n and spaces
+                IndentChars = "  ",           // Use two spaces for indentation
+                NewLineChars = "",        // This is where those characters come from
+                OmitXmlDeclaration = false,   // Keeps the <?xml...?> header
+                Encoding = System.Text.Encoding.UTF8
+            };
+
+            var serializer = new XmlSerializer(typeof(SitemapUrlSet));
+
+            using (var sw = new Utf8StringWriter())
+            {
+                // 2. Use XmlWriter with your settings
+                using (var writer = XmlWriter.Create(sw, settings))
+                {
+                    serializer.Serialize(writer, sitemapSet, ns);
+                }
+                return sw.ToString();
+            }
+        }
+
+        // Helper to handle UTF-8 encoding (Standard StringWriter defaults to UTF-16)
+        public class Utf8StringWriter : StringWriter
+        {
+            public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
+        }
+
+        public static TaxonomyBasedNavigationItem FindById(IEnumerable<TaxonomyBasedNavigationItem> items, string id)
+        {
+            foreach (var item in items)
+            {
+                if (item.id == id)
+                    return item;
+
+                if (item.childTaxonomyBasedNavigationItem != null)
+                {
+                    var found = FindById(item.childTaxonomyBasedNavigationItem, id);
+                    if (found != null)
+                        return found;
+                }
+            }
+            return null;
+        }
+
+        public static string ConvertToXml(List<TaxonomyBasedNavigationItem> items)
+        {
+            var serializer = new XmlSerializer(typeof(List<TaxonomyBasedNavigationItem>), new XmlRootAttribute("Navigation"));
+
+            var settings = new XmlWriterSettings
+            {
+                Indent = false,
+                NewLineHandling = NewLineHandling.None,
+                OmitXmlDeclaration = false
+            };
+
+            var ns = new XmlSerializerNamespaces();
+            ns.Add("", "");
+
+
+            using (var sw = new Utf8StringWriter())
+            {
+
+                using (var xw = XmlWriter.Create(sw, settings))
+                {
+
+                    serializer.Serialize(xw, items, ns);
+                    string xml = sw.ToString();
+                    return xml;
+                }
+
+
+            }
+        }
+
+        public static string workingConvertToXml(List<TaxonomyBasedNavigationItem> items)
+        {
+
+
+            var serializer = new XmlSerializer(typeof(List<TaxonomyBasedNavigationItem>), new XmlRootAttribute("Navigation"));
+            var ns = new XmlSerializerNamespaces();
+            ns.Add("", "");
+            using (var writer = new Utf8StringWriter())
+            {
+                serializer.Serialize(writer, items, ns);
+                return writer.ToString();
+            }
+        }
+
+        /*
+                public class Utf8StringWriter : StringWriter
+                {
+                    public override Encoding Encoding
+                    {
+                        get { return Encoding.UTF8; }
+                    }
+                }
+        */
+    }
+
+    [XmlRoot("NavigationItem")]
+    public class TaxonomyBasedNavigationItem
+    {
+        public string title { get; set; }
+        public string id { get; set; }
+        public bool isRoot { get; set; }
+
+        [XmlElement("Child")]
+        public List<TaxonomyBasedNavigationItem> childTaxonomyBasedNavigationItem = new List<TaxonomyBasedNavigationItem>();
+
+        [XmlElement("UrlMap")]
+        public List<UrlMapNavigationItem> urlMapNavigationItem = new List<UrlMapNavigationItem>();
+
+    }
+
+    [XmlRoot("UrlMapNavigationItem")]
+    public class UrlMapNavigationItem
+    {
+        public string url { get; set; }
+        public string categoryTitle { get; set; }
+        public string keywordId { get; set; }
+        public string key { get; set; }
+        public string routeName { get; set; }
+        public string displayTitle { get; set; }
+        public string visibilityStatus { get; set; }
+
+    }
+}

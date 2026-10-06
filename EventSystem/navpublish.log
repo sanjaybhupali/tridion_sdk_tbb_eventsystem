@@ -1,0 +1,84 @@
+9/28/2026 1:03:53 PM: Transaction Id=tcm:0-89526-66560, State=Success, Target=Preview Staging
+9/28/2026 1:11:14 PM: Transaction Id=tcm:0-89528-66560, State=Success, Target=Preview Staging
+9/28/2026 1:34:21 PM: Transaction Id=tcm:0-89537-66560, State=WaitingForDeployment, Target=Preview Staging
+9/28/2026 1:34:21 PM: RepublishNavigationJsonAsync failed: System.IO.IOException: The process cannot access the file 'C:\sdkcode\EventSystem\navpublish.log' because it is being used by another process.
+   at System.IO.__Error.WinIOError(Int32 errorCode, String maybeFullPath)
+   at System.IO.FileStream.Init(String path, FileMode mode, FileAccess access, Int32 rights, Boolean useRights, FileShare share, Int32 bufferSize, FileOptions options, SECURITY_ATTRIBUTES secAttrs, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.FileStream..ctor(String path, FileMode mode, FileAccess access, FileShare share, Int32 bufferSize, FileOptions options, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.StreamWriter.CreateFile(String path, Boolean append, Boolean checkHost)
+   at System.IO.StreamWriter..ctor(String path, Boolean append, Encoding encoding, Int32 bufferSize, Boolean checkHost)
+   at System.IO.StreamWriter..ctor(String path, Boolean append, Encoding encoding)
+   at System.IO.File.InternalAppendAllText(String path, String contents, Encoding encoding)
+   at Tridion.IntegrationEngine.TridionEventHandler.IntegrationEngineEventHandler.RepublishNavigationJsonAsync(TcmUri pageId, TcmUri targetId, String userName) in C:\sdkcode\EventSystem\NavigationAutoPublisherExtension\Tridion.IntegrationEngine.TridionEventHandler\IntegrationEngineEventHandler.cs:line 116
+9/28/2026 1:34:21 PM: RepublishNavigationJsonAsync failed: System.IO.IOException: The process cannot access the file 'C:\sdkcode\EventSystem\navpublish.log' because it is being used by another process.
+   at System.IO.__Error.WinIOError(Int32 errorCode, String maybeFullPath)
+   at System.IO.FileStream.Init(String path, FileMode mode, FileAccess access, Int32 rights, Boolean useRights, FileShare share, Int32 bufferSize, FileOptions options, SECURITY_ATTRIBUTES secAttrs, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.FileStream..ctor(String path, FileMode mode, FileAccess access, FileShare share, Int32 bufferSize, FileOptions options, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.StreamWriter.CreateFile(String path, Boolean append, Boolean checkHost)
+   at System.IO.StreamWriter..ctor(String path, Boolean append, Encoding encoding, Int32 bufferSize, Boolean checkHost)
+   at System.IO.StreamWriter..ctor(String path, Boolean append, Encoding encoding)
+   at System.IO.File.InternalAppendAllText(String path, String contents, Encoding encoding)
+   at Tridion.IntegrationEngine.TridionEventHandler.IntegrationEngineEventHandler.RepublishNavigationJsonAsync(TcmUri pageId, TcmUri targetId, String userName) in C:\sdkcode\EventSystem\NavigationAutoPublisherExtension\Tridion.IntegrationEngine.TridionEventHandler\IntegrationEngineEventHandler.cs:line 116
+9/28/2026 1:36:21 PM: Transaction Id=tcm:0-89545-66560, State=Success, Target=Preview Staging
+9/28/2026 1:36:21 PM: RepublishNavigationJsonAsync failed: Tridion.ContentManager.ItemDoesNotExistException: The item tcm:0-89546-66560 does not exist.
+   at Tridion.ContentManager.Data.AdoNet.DatabaseUtilities.Execute(StoredProcedureInvocation storedProcedureInvocation)
+   at Tridion.ContentManager.Data.AdoNet.IdentifiableObjectDataMapper.Read(TcmUri id, StoredProcedureInvocation spInvocation, Boolean includeExpensiveProperties)
+   at Tridion.ContentManager.Data.AdoNet.IdentifiableObjectDataMapper.<>c__DisplayClass3_0.<Tridion.ContentManager.Data.IIdentifiableObjectDataMapper.Read>b__0()
+   at Tridion.ContentManager.Cache.DataMapperCache.DataMapperCache`1.ReadItem(Func`1 valueGetter)
+   at Tridion.ContentManager.Cache.DataMapperCache.DataMapperCache`1.GetItem(String key, Func`1 valueGetter, Boolean includeExpensiveProperties)
+   at Tridion.ContentManager.Data.AdoNet.IdentifiableObjectDataMapper.Tridion.ContentManager.Data.IIdentifiableObjectDataMapper.Read(TcmUri id, Boolean includeExpensiveProperties)
+   at Tridion.ContentManager.Session.GetDataObject(TcmUri id, Boolean includeExpensiveProperties, Boolean useSessionCache)
+   at Tridion.ContentManager.IdentifiableObject.Load(LoadFlags flags, ItemLoadMode mode)
+   at Tridion.ContentManager.IdentifiableObject.Reload()
+   at Tridion.ContentManager.Publishing.PublishTransaction.get_State()
+   at Tridion.IntegrationEngine.TridionEventHandler.IntegrationEngineEventHandler.RepublishNavigationJsonAsync(TcmUri pageId, TcmUri targetId, String userName) in C:\sdkcode\EventSystem\NavigationAutoPublisherExtension\Tridion.IntegrationEngine.TridionEventHandler\IntegrationEngineEventHandler.cs:line 115
+9/28/2026 1:36:27 PM: RepublishNavigationJsonAsync failed: Tridion.ContentManager.ItemDoesNotExistException: The item tcm:0-89547-66560 does not exist.
+   at Tridion.ContentManager.Data.AdoNet.DatabaseUtilities.Execute(StoredProcedureInvocation storedProcedureInvocation)
+   at Tridion.ContentManager.Data.AdoNet.IdentifiableObjectDataMapper.Read(TcmUri id, StoredProcedureInvocation spInvocation, Boolean includeExpensiveProperties)
+   at Tridion.ContentManager.Data.AdoNet.IdentifiableObjectDataMapper.<>c__DisplayClass3_0.<Tridion.ContentManager.Data.IIdentifiableObjectDataMapper.Read>b__0()
+   at Tridion.ContentManager.Cache.DataMapperCache.DataMapperCache`1.ReadItem(Func`1 valueGetter)
+   at Tridion.ContentManager.Cache.DataMapperCache.DataMapperCache`1.GetItem(String key, Func`1 valueGetter, Boolean includeExpensiveProperties)
+   at Tridion.ContentManager.Data.AdoNet.IdentifiableObjectDataMapper.Tridion.ContentManager.Data.IIdentifiableObjectDataMapper.Read(TcmUri id, Boolean includeExpensiveProperties)
+   at Tridion.ContentManager.Session.GetDataObject(TcmUri id, Boolean includeExpensiveProperties, Boolean useSessionCache)
+   at Tridion.ContentManager.IdentifiableObject.Load(LoadFlags flags, ItemLoadMode mode)
+   at Tridion.ContentManager.IdentifiableObject.Reload()
+   at Tridion.ContentManager.Publishing.PublishTransaction.get_State()
+   at Tridion.IntegrationEngine.TridionEventHandler.IntegrationEngineEventHandler.RepublishNavigationJsonAsync(TcmUri pageId, TcmUri targetId, String userName) in C:\sdkcode\EventSystem\NavigationAutoPublisherExtension\Tridion.IntegrationEngine.TridionEventHandler\IntegrationEngineEventHandler.cs:line 115
+9/28/2026 1:36:27 PM: Transaction Id=tcm:0-89548-66560, State=Success, Target=Preview Staging
+9/28/2026 1:41:07 PM: Transaction Id=tcm:0-89551-66560, State=Success, Target=Preview Staging
+9/28/2026 1:58:50 PM: Transaction Id=tcm:0-89553-66560, State=Success, Target=Preview Staging
+9/28/2026 2:03:11 PM: Transaction Id=tcm:0-89555-66560, State=Success, Target=Preview Staging
+9/28/2026 2:11:42 PM: Transaction Id=tcm:0-89557-66560, State=Success, Target=Preview Staging
+9/28/2026 2:14:47 PM: Transaction Id=tcm:0-89561-66560, State=Success, Target=Preview Staging
+9/28/2026 2:14:47 PM: RepublishNavigationJsonAsync failed: Tridion.ContentManager.ItemDoesNotExistException: The item tcm:0-89560-66560 does not exist.
+   at Tridion.ContentManager.Data.AdoNet.DatabaseUtilities.Execute(StoredProcedureInvocation storedProcedureInvocation)
+   at Tridion.ContentManager.Data.AdoNet.IdentifiableObjectDataMapper.Read(TcmUri id, StoredProcedureInvocation spInvocation, Boolean includeExpensiveProperties)
+   at Tridion.ContentManager.Data.AdoNet.IdentifiableObjectDataMapper.<>c__DisplayClass3_0.<Tridion.ContentManager.Data.IIdentifiableObjectDataMapper.Read>b__0()
+   at Tridion.ContentManager.Cache.DataMapperCache.DataMapperCache`1.ReadItem(Func`1 valueGetter)
+   at Tridion.ContentManager.Cache.DataMapperCache.DataMapperCache`1.GetItem(String key, Func`1 valueGetter, Boolean includeExpensiveProperties)
+   at Tridion.ContentManager.Data.AdoNet.IdentifiableObjectDataMapper.Tridion.ContentManager.Data.IIdentifiableObjectDataMapper.Read(TcmUri id, Boolean includeExpensiveProperties)
+   at Tridion.ContentManager.Session.GetDataObject(TcmUri id, Boolean includeExpensiveProperties, Boolean useSessionCache)
+   at Tridion.ContentManager.IdentifiableObject.Load(LoadFlags flags, ItemLoadMode mode)
+   at Tridion.ContentManager.IdentifiableObject.Reload()
+   at Tridion.ContentManager.Publishing.PublishTransaction.get_State()
+   at Tridion.IntegrationEngine.TridionEventHandler.IntegrationEngineEventHandler.RepublishNavigationJsonAsync(TcmUri pageId, TcmUri targetId, String userName) in C:\sdkcode\EventSystem\NavigationAutoPublisherExtension\Tridion.IntegrationEngine.TridionEventHandler\IntegrationEngineEventHandler.cs:line 115
+9/28/2026 2:14:47 PM: Transaction Id=tcm:0-89564-66560, State=WaitingForDeployment, Target=Preview Staging
+9/28/2026 2:14:47 PM: Transaction Id=tcm:0-89562-66560, State=WaitingForDeployment, Target=Preview Staging
+9/28/2026 2:14:47 PM: RepublishNavigationJsonAsync failed: System.IO.IOException: The process cannot access the file 'C:\sdkcode\EventSystem\navpublish.log' because it is being used by another process.
+   at System.IO.__Error.WinIOError(Int32 errorCode, String maybeFullPath)
+   at System.IO.FileStream.Init(String path, FileMode mode, FileAccess access, Int32 rights, Boolean useRights, FileShare share, Int32 bufferSize, FileOptions options, SECURITY_ATTRIBUTES secAttrs, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.FileStream..ctor(String path, FileMode mode, FileAccess access, FileShare share, Int32 bufferSize, FileOptions options, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
+   at System.IO.StreamWriter.CreateFile(String path, Boolean append, Boolean checkHost)
+   at System.IO.StreamWriter..ctor(String path, Boolean append, Encoding encoding, Int32 bufferSize, Boolean checkHost)
+   at System.IO.StreamWriter..ctor(String path, Boolean append, Encoding encoding)
+   at System.IO.File.InternalAppendAllText(String path, String contents, Encoding encoding)
+   at Tridion.IntegrationEngine.TridionEventHandler.IntegrationEngineEventHandler.RepublishNavigationJsonAsync(TcmUri pageId, TcmUri targetId, String userName) in C:\sdkcode\EventSystem\NavigationAutoPublisherExtension\Tridion.IntegrationEngine.TridionEventHandler\IntegrationEngineEventHandler.cs:line 116
+9/28/2026 2:16:28 PM: Transaction Id=tcm:0-89567-66560, State=Success, Target=Preview Staging
+9/29/2026 5:03:02 AM: Transaction Id=tcm:0-90430-66560, State=Success, Target=Preview Staging
+9/29/2026 5:04:57 AM: Transaction Id=tcm:0-90432-66560, State=Success, Target=Preview Staging
+9/29/2026 6:32:56 AM: Transaction Id=tcm:0-90434-66560, State=Success, Target=Preview Staging
+9/29/2026 7:03:24 AM: Transaction Id=tcm:0-90436-66560, State=Success, Target=Preview Staging
+9/29/2026 2:10:06 PM: Transaction Id=tcm:0-90448-66560, State=WaitingForPublish, Target=Preview Staging
+9/29/2026 2:10:33 PM: Transaction Id=tcm:0-90449-66560, State=ReadyForTransport, Target=Preview Staging
+9/29/2026 2:44:01 PM: Transaction Id=tcm:0-90451-66560, State=WaitingForDeployment, Target=Preview Staging
+9/29/2026 2:46:01 PM: Transaction Id=tcm:0-90453-66560, State=WaitingForDeployment, Target=Preview Staging
